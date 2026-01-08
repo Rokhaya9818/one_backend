@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 # Routers supplémentaires
 from fvr_import_endpoint import router as fvr_import_router
-from auto_import_fvr_facebook import router as auto_import_fvr_router
+
 from fvr_import_ocr import router as fvr_import_ocr_router
 from risk_analysis import router as risk_analysis_router
 from prediction_multifactors import router as prediction_router
@@ -37,7 +37,6 @@ app.add_middleware(
 
 # Inclure les routers
 app.include_router(fvr_import_router)
-app.include_router(auto_import_fvr_router)
 app.include_router(fvr_import_ocr_router)
 app.include_router(risk_analysis_router)
 app.include_router(prediction_router)
