@@ -1,0 +1,27 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environnements virtuels
+venv/
+env/
+.venv/
+
+# Variables d'environnement
+.env
+.env.*
+
+# Logs
+*.log
+
+# Tests
+.pytest_cache/
+.coverage
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
