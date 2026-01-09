@@ -29,7 +29,10 @@ app = FastAPI(title="One Health Dashboard API", version="2.0.0")
 # Configuration CORS pour permettre les requêtes du frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En production, spécifier les domaines autorisés
+     allow_origins=[
+        "https://one-health1.netlify.app",
+        "http://localhost:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
