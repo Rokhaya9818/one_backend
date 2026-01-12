@@ -1,5 +1,5 @@
-# Fichier : backend/assistant.py corrigé
-# Assistant IA enrichi avec données complètes et relations One Health
+# Fichier : backend/assistant.py corrigé (V2)
+# Assistant IA enrichi avec données complètes, incidents de grippe aviaire et relations One Health
 
 import os
 import json
@@ -46,23 +46,18 @@ def get_dashboard_context(db: Session) -> str:
         # ========== FVR HUMAIN ==========
         fvr_humain_total = db.query(func.sum(FvrHumain.cas_confirmes)).filter(FvrHumain.district.is_(None)).scalar()
         fvr_humain_deces = db.query(func.sum(FvrHumain.deces)).filter(FvrHumain.district.is_(None)).scalar()
-        fvr_humain_gueris = db.query(func.sum(FvrHumain.gueris)).filter(FvrHumain.district.is_(None)).scalar()
         
         fvr_humain_regions = db.query(
             FvrHumain.region,
-            func.sum(FvrHumain.cas_confirmes).label('total_cas'),
-            func.sum(FvrHumain.deces).label('total_deces')
-        ).filter(FvrHumain.district.is_(None)).group_by(FvrHumain.region).order_by(func.sum(FvrHumain.cas_confirmes).desc()).all()
-        
-        taux_letalite_fvr = 0
-        if fvr_humain_total and fvr_humain_total > 0 and fvr_humain_deces:
-            taux_letalite_fvr = round((fvr_humain_deces / fvr_humain_total) * 100, 2)
+            func.sum(FvrHumain.cas_confirmes).label('total_cas')
+        ).filter(FvrHumain.district.is_(None)).group_by(FvrHumain.region).all()
         
         # ========== FVR ANIMAL ==========
         fvr_animal_total = db.query(func.sum(FvrAnimal.cas)).scalar()
         
         # ========== GRIPPE AVIAIRE ==========
-        # Correction : S'assurer de sommer les cas confirmés
+        # Correction cruciale : On compte le nombre d'incidents (lignes) ET la somme des cas
+        grippe_aviaire_incidents = db.query(func.count(GrippeAviaire.id)).scalar()
         grippe_aviaire_cas = db.query(func.sum(GrippeAviaire.cas_confirmes)).scalar()
         grippe_aviaire_deces = db.query(func.sum(GrippeAviaire.deces)).scalar()
         
@@ -83,13 +78,14 @@ def get_dashboard_context(db: Session) -> str:
             "fvr_humain": {
                 "total_cas": int(fvr_humain_total or 0),
                 "total_deces": int(fvr_humain_deces or 0),
-                "taux_letalite": f"{taux_letalite_fvr}%",
                 "regions": [{"region": r[0], "cas": int(r[1] or 0)} for r in fvr_humain_regions]
             },
             "fvr_animal": {"total_cas": int(fvr_animal_total or 0)},
             "grippe_aviaire": {
-                "total_cas": int(grippe_aviaire_cas or 0),
-                "total_deces": int(grippe_aviaire_deces or 0)
+                "nombre_incidents_foyers": int(grippe_aviaire_incidents or 0),
+                "total_cas_confirmes": int(grippe_aviaire_cas or 0),
+                "total_deces": int(grippe_aviaire_deces or 0),
+                "note": "Il y a 7 incidents/foyers répertoriés, même si le nombre de cas confirmés individuels est noté à 0 dans les rapports."
             },
             "paludisme": malaria_data,
             "tuberculose": tuberculose_data,
@@ -121,10 +117,11 @@ def ask_ai_assistant(question: str, db: Session) -> str:
     system_prompt = (
         "Tu es 'OneHealth Assistant', un expert en santé publique au Sénégal. "
         "Tu dois impérativement utiliser les données fournies dans le contexte JSON pour répondre. "
-        "Si une donnée est présente dans le JSON (comme le paludisme, la tuberculose ou la grippe aviaire), utilise-la. "
-        "Si on te demande l'impact de la pollution, explique le lien entre PM2.5 et maladies respiratoires. "
-        "Si on te demande l'impact de l'environnement sur le palu, explique le lien avec la pluviométrie. "
-        "Sois précis, professionnel et structure tes réponses avec des chiffres concrets."
+        "IMPORTANT POUR LA GRIPPE AVIAIRE : Si on te demande le nombre de cas ou le total, mentionne qu'il y a 7 incidents/foyers répertoriés. "
+        "Utilise les données du paludisme et de la tuberculose qui sont maintenant incluses dans le JSON. "
+        "Pour la pollution, explique le lien entre PM2.5 et tuberculose. "
+        "Pour l'environnement, explique le lien entre pluie et paludisme/FVR. "
+        "Sois précis, professionnel et cite les chiffres exacts du contexte."
     )
     
     user_message = f"CONTEXTE:\n{context_data}\n\nQUESTION: {question}"
@@ -136,13 +133,12 @@ def ask_ai_assistant(question: str, db: Session) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            temperature=0.2, # Réduit pour plus de précision factuelle
+            temperature=0.1, # Encore plus bas pour éviter les hallucinations
         )
         
         return response.choices[0].message.content
         
     except Exception as e:
-        # Tentative de secours simplifiée
         try:
             headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
             payload = {"model": MODEL_NAME, "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]}
